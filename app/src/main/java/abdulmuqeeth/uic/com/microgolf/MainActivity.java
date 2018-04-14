@@ -44,12 +44,14 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onClick(View v) {
 
-        Thread player1 = new Thread(new Runnable1());
+        Thread player1 = new Thread(new Strategy1());
+        Thread player2 = new Thread(new Strategy2());
         player1.start();
+        player2.start();
         }
     };
 
-    class Runnable1 implements Runnable{
+    class Strategy1 implements Runnable{
 
         @Override
         public void run() {
@@ -62,12 +64,35 @@ public class MainActivity extends AppCompatActivity {
 
             player1_previous_shots.add(player1_shot);
 
-            System.out.println(player1_shot);
+            System.out.println("player1_shot "+player1_shot);
             if(player1_shot == winning){
-                System.out.println("won");
+                player1_win = true;
+                System.out.println("player 1 won");
             }
         }
     }
+
+    class Strategy2 implements Runnable{
+
+        @Override
+        public void run() {
+            player2_shot = rand.nextInt(50);
+
+            while(player2_previous_shots.contains(player2_shot)){
+                System.out.println("matched item already in list");
+                player2_shot = rand.nextInt(50);
+            }
+
+            player2_previous_shots.add(player2_shot);
+
+            System.out.println("player2_shot "+player2_shot);
+            if(player2_shot == winning){
+                player2_win = true;
+                System.out.println("player 2 won");
+            }
+        }
+    }
+
 }
 
 
