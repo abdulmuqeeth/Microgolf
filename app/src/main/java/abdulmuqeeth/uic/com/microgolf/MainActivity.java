@@ -33,17 +33,22 @@ public class MainActivity extends AppCompatActivity {
     };
 
 
+    Random rand = new Random();
+
     private Button startButton;
     private int winning = 0;
     private int player1_shot = 0;
-    private int player2_shot = 0;
+
+    private int player2_shot;
+
+    private int group_player2;
+
     private ArrayList<Integer> player1_previous_shots = new ArrayList<Integer>();
+
     private ArrayList<Integer> player2_previous_shots = new ArrayList<Integer>();
-
     private boolean player1_win = false;
-    private boolean player2_win = false;
 
-    Random rand = new Random();
+    private boolean player2_win = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,7 +58,13 @@ public class MainActivity extends AppCompatActivity {
         //Fixing the winning hole
         winning = rand.nextInt(50);
 
+        player2_shot = rand.nextInt(50);
+
+        group_player2 = group(player2_shot);
+
         System.out.println("winning "+winning);
+        System.out.println("player 2 group "+group_player2);
+
 
         startButton = (Button) findViewById(R.id.start_button);
 
@@ -73,6 +84,21 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private int group(int shot) {
+        if(shot >=0 && shot <10){
+            return 1;
+        } else if(shot >=10 && shot <20){
+            return 2;
+        } else if(shot >=20 && shot <30){
+            return 3;
+        } else if(shot >=30 && shot <40){
+            return 4;
+        } else if(shot >=40 && shot <50){
+            return 5;
+        } else {
+            return -1;
+        }
+    }
     class Strategy1 implements Runnable{
 
         @Override
@@ -99,6 +125,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    //Strategy to shoot in same group
     class Strategy2 implements Runnable{
 
         @Override
@@ -106,12 +133,20 @@ public class MainActivity extends AppCompatActivity {
             Message msg = myHandler.obtainMessage(PLAYER2_ID);
             msg.arg1 = 20;
 
-
-            player2_shot = rand.nextInt(50);
-
             while(player2_previous_shots.contains(player2_shot)){
                 System.out.println("matched item already in list");
-                player2_shot = rand.nextInt(50);
+                switch (group_player2){
+                    case 1: player2_shot = rand.nextInt(10);
+                            break;
+                    case 2: player2_shot = 10 + rand.nextInt(10);
+                            break;
+                    case 3: player2_shot = 20 + rand.nextInt(10);
+                            break;
+                    case 4: player2_shot = 30 + rand.nextInt(10);
+                            break;
+                    case 5: player2_shot = 40 + rand.nextInt(10);
+                            break;
+                }
             }
 
             player2_previous_shots.add(player2_shot);
