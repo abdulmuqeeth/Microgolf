@@ -1,6 +1,8 @@
 package abdulmuqeeth.uic.com.microgolf;
 
 import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -16,22 +18,14 @@ public class MainActivity extends AppCompatActivity {
     private static final int PLAYER1_ID = 1;
     private static final int PLAYER2_ID = 2;
 
-    private Handler myHandler = new Handler(){
-        public void handleMessage(Message msg){
-            int what = msg.what;
-                switch (what){
-                    case PLAYER1_ID:
-                        Toast.makeText(getApplicationContext(), "player 1 won", Toast.LENGTH_SHORT).show();
-                        System.out.println("player 1 won");
-                        break;
-                    case PLAYER2_ID:
-                        Toast.makeText(getApplicationContext(), "player 2 won", Toast.LENGTH_SHORT).show();
-                        System.out.println("player 2 won");
-                        break;
-                }
-        }
-    };
+    Thread1 player1;
+    Thread2 player2;
 
+    Looper looper1;
+    Looper looper2;
+
+    Handler handler1;
+    Handler handler2;
 
     Random rand = new Random();
 
@@ -70,19 +64,45 @@ public class MainActivity extends AppCompatActivity {
 
         startButton.setOnClickListener(startButtonListener);
 
+
+        player1 = new Thread1("player1");
+        player2 = new Thread2("player2");
+
+        player1.start();
+        looper1 = player1.getLooper();
+        handler1 = new Handler(looper1);
+
+        player2.start();
+        looper2 = player2.getLooper();
+        handler2 = new Handler(looper2);
+
     }
 
 
     private View.OnClickListener startButtonListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-
-        Thread player1 = new Thread(new Strategy1());
-        Thread player2 = new Thread(new Strategy2());
-        player1.start();
-        player2.start();
+            handler1.post(new Strategy1());
+            handler2.post(new Strategy2());
         }
     };
+
+    private Handler myHandler = new Handler(){
+        public void handleMessage(Message msg){
+            int what = msg.what;
+            switch (what){
+                case PLAYER1_ID:
+                    Toast.makeText(getApplicationContext(), "player 1 won", Toast.LENGTH_SHORT).show();
+                    System.out.println("player 1 won");
+                    break;
+                case PLAYER2_ID:
+                    Toast.makeText(getApplicationContext(), "player 2 won", Toast.LENGTH_SHORT).show();
+                    System.out.println("player 2 won");
+                    break;
+            }
+        }
+    };
+
 
     private int group(int shot) {
         if(shot >=0 && shot <10){
@@ -99,6 +119,45 @@ public class MainActivity extends AppCompatActivity {
             return -1;
         }
     }
+
+
+    class Thread1 extends HandlerThread {
+        Handler thread1Handler;
+
+        public Thread1(String name){
+            super (name);
+        }
+
+        @Override
+        protected void onLooperPrepared() {
+            super.onLooperPrepared();
+            thread1Handler = new Handler(getLooper()){
+                public void handleMessageThread1(Message msg){
+                    //TODO
+                }
+            };
+        }
+    }
+
+    class Thread2 extends HandlerThread {
+        Handler thread2Handler;
+
+        public Thread2(String name){
+            super (name);
+        }
+
+        @Override
+        protected void onLooperPrepared() {
+            super.onLooperPrepared();
+            thread2Handler = new Handler(getLooper()){
+                public void handleMessageThread1(Message msg){
+                    //TODO
+                }
+            };
+        }
+    }
+
+
     class Strategy1 implements Runnable{
 
         @Override
