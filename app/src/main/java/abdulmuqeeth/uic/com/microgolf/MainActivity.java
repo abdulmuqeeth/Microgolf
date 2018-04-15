@@ -82,8 +82,25 @@ public class MainActivity extends AppCompatActivity {
     private View.OnClickListener startButtonListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-            handler1.post(new Strategy1());
-            handler2.post(new Strategy2());
+
+            if(player1_win || player2_win){
+                player1.quit();
+                player2.quit();
+                System.out.println("All threads quit cuz game won");
+            }
+
+            if(player1.isAlive()){
+                System.out.println("player 1 alive");
+                handler1.post(new Strategy1());
+            } else{
+                System.out.println("player 1 dead");
+            }
+            if(player2.isAlive()){
+                System.out.println("player 2 alive");
+                handler2.post(new Strategy2());
+            } else{
+                System.out.println("player 2 dead");
+            }
         }
     };
 
@@ -192,20 +209,27 @@ public class MainActivity extends AppCompatActivity {
             Message msg = myHandler.obtainMessage(PLAYER2_ID);
             msg.arg1 = 20;
 
-            while(player2_previous_shots.contains(player2_shot)){
-                System.out.println("matched item already in list");
-                switch (group_player2){
-                    case 1: player2_shot = rand.nextInt(10);
-                            break;
-                    case 2: player2_shot = 10 + rand.nextInt(10);
-                            break;
-                    case 3: player2_shot = 20 + rand.nextInt(10);
-                            break;
-                    case 4: player2_shot = 30 + rand.nextInt(10);
-                            break;
-                    case 5: player2_shot = 40 + rand.nextInt(10);
-                            break;
+            if(player2_previous_shots.size() < 10){
+                while(player2_previous_shots.contains(player2_shot)){
+
+                        System.out.println("matched item already in list");
+                        switch (group_player2){
+                            case 1: player2_shot = rand.nextInt(10);
+                                break;
+                            case 2: player2_shot = 10 + rand.nextInt(10);
+                                break;
+                            case 3: player2_shot = 20 + rand.nextInt(10);
+                                break;
+                            case 4: player2_shot = 30 + rand.nextInt(10);
+                                break;
+                            case 5: player2_shot = 40 + rand.nextInt(10);
+                                break;
+                        }
                 }
+            } else{
+                player2.quit();
+                System.out.println("player 2 thread quit inside runnable");
+                return;
             }
 
             player2_previous_shots.add(player2_shot);
