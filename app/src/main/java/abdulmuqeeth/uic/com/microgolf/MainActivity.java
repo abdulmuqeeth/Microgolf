@@ -7,6 +7,9 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -16,13 +19,19 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
 
+    private RecyclerView mainListView;
+    private RecyclerView.Adapter mAdapter;
+    private RecyclerView.LayoutManager mLayoutManager;
+
     private static final int PLAYER1_ID = 1;
     private static final int PLAYER2_ID = 2;
 
-    private boolean gameOver = false;
+    private final static int JACKPOT = 101;
+    private final static int NEAR_MISS = 102;
+    private final static int NEAR_GROUP = 103;
+    private final static int BIG_MISS = 104;
+    private final static int CATASTROPHE = 105;
 
-    //Thread1 player1;
-    //Thread2 player2;
     HandlerThread player1;
     HandlerThread player2;
 
@@ -35,18 +44,18 @@ public class MainActivity extends AppCompatActivity {
     Random rand = new Random();
 
     private Button startButton;
-
-    private int winning = 0;
-    private int groupWinning;
+    private int winning;
 
     private int player1Shot;
-    private int player1Group;
-
     private int player2Shot;
+
     private int player2Group;
+    private int winningGroup;
 
     private ArrayList<Integer> player1_previous_shots = new ArrayList<Integer>();
     private ArrayList<Integer> player2_previous_shots = new ArrayList<Integer>();
+
+    private ArrayList<Integer> player2_all_groups = new ArrayList<Integer>();
 
     private boolean player1_win = false;
     private boolean player2_win = false;
@@ -54,40 +63,52 @@ public class MainActivity extends AppCompatActivity {
     private int player1_outcome;
     private int player2_outcome;
 
-    private final static int JACKPOT = 101;
-    private final static int NEAR_MISS = 102;
-    private final static int NEAR_GROUP = 103;
-    private final static int BIG_MISS = 104;
-    private final static int CATASTROPHE = 105;
+    private int player1_lastshot = -1000;
+    private int player2_lastshot = -1000;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        mainListView = (RecyclerView) findViewById(R.id.recycler_list);
+        mainListView.setHasFixedSize(true);
+
+        mLayoutManager = new LinearLayoutManager(this);
+        mainListView.setLayoutManager(mLayoutManager);
+        mainListView.setBackgroundColor(Color.parseColor("#EEEEEE"));
+
+        ArrayList<String> holes = new ArrayList<>();
+
+        for(int i=0; i<50 ; i++){
+            holes.add("O");
+        }
+
+        // Defining the adapter
+        mAdapter = new MyAdapter(this, holes);
+
+        mainListView.setAdapter(mAdapter);
+
         //Fixing the winning hole
         winning = rand.nextInt(50);
+        Log.i("UI","winning hole= "+winning);
         //Determining the group for winning shot
-        groupWinning =  group(winning);
+        winningGroup =  group(winning);
+
+        Toast.makeText(getApplicationContext(), "Winning hole: "+winning, Toast.LENGTH_SHORT).show();
+        Toast.makeText(getApplicationContext(), "Winning Hole:Red  P1:Green  P2:Blue", Toast.LENGTH_SHORT).show();
 
         //First shot of player2 for determining group
         player2Shot = rand.nextInt(50);
+
         //Determining the group for player2
         player2Group = group(player2Shot);
-
-        System.out.println("winning "+winning);
-
-        Toast.makeText(getApplicationContext(), "Winning hole "+winning, Toast.LENGTH_SHORT).show();
-
+        player2_all_groups.add(player2Group);
         System.out.println("player 2 group "+ player2Group);
 
         startButton = (Button) findViewById(R.id.start_button);
 
         startButton.setOnClickListener(startButtonListener);
-
-
-        //player1 = new Thread1("player1");
-        //player2 = new Thread2("player2");
 
         player1 = new HandlerThread("player1");
         player2 = new HandlerThread("player2");
@@ -99,28 +120,50 @@ public class MainActivity extends AppCompatActivity {
             public void handleMessage(Message msg) {
                 super.handleMessage(msg);
 
+                ready3 = false;
+                ready4 = false;
+
+                synchronized (lock2){
+                    while(!ready2){
+                        try{
+                            Log.i("handler1","handler1 waiting for lock2 to be released by Strategy2 runnable");
+                            lock2.wait();
+                        } catch (InterruptedException e){
+                            Log.i("handler1","InterruptedException in handler1");
+                            return;}
+                    }
+                }
+
+                //System.out.println("Lock2 released continuing handler1");
+
+                if(!player2.isAlive()){
+                    ready4=true;
+                }
                 if(!player2_win){
-                    System.out.println("Handling player1 message");
+                    Log.i("handler1","Handling player1 message");
                     int outcome = msg.arg1;
-                    System.out.println("Player 1 outcome informed by UI thread is "+outcome);
+                    //System.out.println("Player 1 outcome informed by UI thread is "+outcome);
 
                     if(outcome == CATASTROPHE) {
-                        System.out.println("Player2 won");
+                        Log.i("handler1","Player2 won");
                         player2.quit();
                         player1.quit();
                         return;
                     }
 
                     if (outcome == JACKPOT){
-                        System.out.println("Player1 won");
+                        player1_win = true;
+                        player2.interrupt();
                         player1.quit();
                         player2.quit();
                     } else {
                         handler1.post(new Strategy1());
+                        synchronized (lock3){
+                            ready3 = true;
+                            Log.i("handler1","lock3 released in handler1");
+                            lock3.notify();
+                        }
                     }
-                    /*if(player2_previous_shots.size() ==10){
-                        handler1.post(new Strategy1());
-                    }*/
                 }
             }
         };
@@ -132,10 +175,22 @@ public class MainActivity extends AppCompatActivity {
             public void handleMessage(Message msg) {
                 super.handleMessage(msg);
 
+                synchronized (lock3){
+                    while(!ready3){
+                        try{
+                            Log.i("handler2","handler2 waiting for lock3 to be released by handler1");
+                            lock3.wait();
+                        } catch (InterruptedException e){
+                            Log.i("handler2","Caught interrupted handler2");
+                            return;
+                        }
+                    }
+                }
+
                 if(!player1_win){
-                    System.out.println("Handling player2 message");
+                    Log.i("handler2","Handling player2 message");
                     int outcome = msg.arg1;
-                    System.out.println("Player 2 outcome informed by UI thread is "+outcome);
+                    Log.i("handler2","Player 2 outcome informed by UI thread is "+outcome);
                     if(outcome == CATASTROPHE) {
                         System.out.println("Player1 won");
                         player1.quit();
@@ -144,77 +199,43 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if(outcome == JACKPOT){
                         player2_win = true;
-                        System.out.println("Player2 won");
+                        Log.i("handler2","Player2 won cuz Jackpot, interrupting player1 and quitting threads");
+                        player1.interrupt();
                         player2.quit();
                         player1.quit();
+                        //System.out.println("Player2 won cuz Jackpot, QUITTED threads");
                     }else {
                         handler2.post(new Strategy2());
+                        synchronized (lock4){
+                            ready4 = true;
+                            Log.i("handler2","lock4 released in handler2");
+                            lock4.notify();
+                        }
                     }
                 }
             }
         };
-
     }
-
 
     private View.OnClickListener startButtonListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
 
-            /*while(! (player1_win || player2_win)){
-                System.out.println("Posting runnables");
-                if(player1.isAlive()){
-                    handler1.post(new Strategy1());
-                }
-                if(player2.isAlive()){
-                    handler2.post(new Strategy2());
-                }
+
+            //Changing color of winning hole to red
+            mainListView.getChildAt(winning).setBackgroundColor(Color.parseColor("#FF0000"));
+
+            try{
+                Thread.sleep(500);
+            } catch (InterruptedException e){
+                System.out.println("Interrupted UI at beginning");
             }
-            System.out.println("out");
-            player1.quit();
-            player2.quit();
-            System.out.println("All threads quit cuz game won");*/
+
+            // modifyView(winning, "#FF0000");
+
             handler1.post(new Strategy1());
 
             handler2.post(new Strategy2());
-            {
-            //while(!(player1_win || player2_win)) {
-
-
-                    /*try{
-                        player1.sleep(2000);
-                        //Thread.sleep(2000);
-                    }catch (InterruptedException e){
-
-                    }*/
-
-                    //handler2.post(new Strategy2());
-                    /*try{
-                        Thread.sleep(2000);
-                    }catch (InterruptedException e){
-
-                    }*/
-            }
-
-
-            /*if(player1_win || player2_win){
-                player1.quit();
-                player2.quit();
-                System.out.println("All threads quit cuz game won");
-            }
-
-            if(player1.isAlive()){
-                System.out.println("player 1 alive");
-                handler1.post(new Strategy1());
-            } else{
-                System.out.println("player 1 dead");
-            }
-            if(player2.isAlive()){
-                System.out.println("player 2 alive");
-                handler2.post(new Strategy2());
-            } else{
-                System.out.println("player 2 dead");
-            }*/
         }
     };
 
@@ -224,118 +245,123 @@ public class MainActivity extends AppCompatActivity {
             int what = msg.what;
             switch (what){
                 case PLAYER1_ID:
-                    System.out.println("inside ui handler");
+                    //If player1 wins in the first shot
+                    if(msg.arg1 == winning) {
+                        player2.interrupt();
+                    }
+                    System.out.println("Inside UI handler for player1");
+                    if(player1_lastshot != -1000){
+                        modifyView(player1_lastshot, "#EEEEEE");
+                    }
 
-                    /*try{
-                        player1.sleep(2000);
-                    }catch (InterruptedException e){}*/
+                    modifyView(msg.arg1, "#00FF00");
+                    if(msg.arg1 == player2_lastshot){
+                        Toast.makeText(getApplicationContext(), "CATASTROPHE", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getApplicationContext(), "Player 2 won", Toast.LENGTH_SHORT).show();
+                        Log.i("UI Handler","Player2 won by catastrophe so interrupting player2");
+                        player2.interrupt();
+                        player1.interrupt();
+                        player1.quit();
+                        player2.quit();
+                        break;
+                    }
 
                     Toast.makeText(getApplicationContext(), "Player1 shot "+msg.arg1, Toast.LENGTH_SHORT).show();
                     player1_outcome = outcome(msg.arg1, "Player1");
-                    message = handler1.obtainMessage();
+
+                    message = handler1.obtainMessage(PLAYER1_ID);
                     message.arg1 = player1_outcome;
-                    System.out.println("posting message to handler1: "+player1_outcome);
-                    if(player1_outcome != CATASTROPHE){
-                        if(!player2_win){
-                            handler1.sendMessage(message);
-                        }
-                    } else{
-                        Toast.makeText(getApplicationContext(), "Player2 won cuz catastrophe", Toast.LENGTH_SHORT).show();
+
+                    if(!player2_win){
+                        handler1.sendMessage(message);
                     }
 
+                    player1_lastshot = msg.arg1;
                     break;
                 case PLAYER2_ID:
+                    Log.i("UI Handler","inside ui handler player2");
+                    Log.i("UI Handler","Player2 last shot "+player2_lastshot);
+
+                    //System.out.println("next statement next statement");
+                    if(player2_lastshot != -1000){
+                        modifyView(player2_lastshot, "#EEEEEE");
+                    }
+
+                    modifyView(msg.arg1, "#0000FF");
+                    if(msg.arg1 == player1_lastshot){
+                        Toast.makeText(getApplicationContext(), "CATASTROPHE", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getApplicationContext(), "Player 1 won", Toast.LENGTH_SHORT).show();
+                        Log.i("UI Handler","Player1 won by catastrophe so interrupting player1");
+                        player1.interrupt();
+                        player2.interrupt();
+                        player1.quit();
+                        player2.quit();
+                        break;
+                    }
+
                     Toast.makeText(getApplicationContext(), "Player2 shot "+msg.arg1, Toast.LENGTH_SHORT).show();
                     player2_outcome = outcome(msg.arg1, "Player2");
                     message = handler2.obtainMessage(PLAYER2_ID);
                     message.arg1 = player2_outcome;
-                    System.out.println("posting message to handler2");
-                    if(player2_outcome != CATASTROPHE){
-                        if(!player1_win){
-                            handler2.sendMessage(message);
-                        }
-                    } else {
-                        Toast.makeText(getApplicationContext(), "Player1 won cuz catastrophe", Toast.LENGTH_SHORT).show();
+                    Log.i("UI Handler","posting message to handler2");
+
+                    if(!player2.isAlive()){
+                        break;
                     }
 
+                    if(!player1_win){
+                        handler2.sendMessage(message);
+                    }
+
+                    player2_lastshot = msg.arg1;
                     break;
             }
         }
     };
 
-   /* class Thread1 extends HandlerThread {
 
-        Handler mHandler;
-
-        public Thread1(String name){
-            super (name);
-            System.out.println("Inside on thread1");
-        }
-
-        @Override
-        protected void onLooperPrepared() {
-            super.onLooperPrepared();
-            System.out.println("Inside on looper prepared");
-            mHandler = new Handler(getLooper()){
-
-                @Override
-                public void handleMessage(Message msg) {
-
-                    System.out.println("Handling player1 message");
-                    super.handleMessage(msg);
-                    int outcome = msg.arg1;
-                    System.out.println("Player 1 outcome informed by UI thread is "+outcome);
-                    //TODO
-                }
-            };
-        }
-    }*/
-
-
-    /*class Thread2 extends HandlerThread {
-
-        Handler mHandler;
-        public Thread2(String name){
-            super (name);
-        }
-
-        @Override
-        protected void onLooperPrepared() {
-            super.onLooperPrepared();
-            mHandler = new Handler(getLooper()){
-
-                @Override
-                public void handleMessage(Message msg) {
-                    super.handleMessage(msg);
-                    int outcome = msg.arg1;
-                    System.out.println("Player 1 outcome informed by UI thread is "+outcome);
-                    //TODO
-                }
-            };
-        }
-    }*/
 
     final Object lock = new Object();
+    final Object lock2 = new Object();
+    final Object lock3 = new Object();
+    final Object lock4 = new Object();
     boolean ready;
+    boolean ready2;
+    boolean ready3;
+    boolean ready4= true;
+
+    private int temp;
 
     class Strategy1 implements Runnable{
 
         @Override
         public void run() {
 
-            try{
-                player1.sleep(2000);
-            }catch (InterruptedException e){
+            synchronized (lock4){
+                while(!ready4){
+                    try{
+                        Log.i("Strategy1","Waiting for lock4 release in strategy1");
+                        lock4.wait();
+                    } catch (InterruptedException e){
+                        Log.i("Strategy1","Caught interrupted strategy1");
+                        return;}
+                }
+            }
 
+            ready = false;
+
+            if(!player1_previous_shots.isEmpty()){
+                try{
+                    player1.sleep(2000);
+                }catch (InterruptedException e){
+                    Log.i("Strategy1","Player1 sleep interrupted");
+                }
             }
 
             //Determining player1 shot
             player1Shot = rand.nextInt(50);
-            //player1Group = group(player1Shot);
-
 
             while(player1_previous_shots.contains(player1Shot)){
-                System.out.println("matched item already in list");
                 player1Shot = rand.nextInt(50);
             }
 
@@ -345,59 +371,86 @@ public class MainActivity extends AppCompatActivity {
             Message msg = uiHandler.obtainMessage(PLAYER1_ID);
             msg.arg1 = player1Shot;
 
-            //Sleep maybe?
-
-            //Retrieve response from UI thread
-
-            System.out.println("player1Shot "+ player1Shot);
+            Log.i("Strategy1","player1Shot "+ player1Shot);
 
             uiHandler.sendMessage(msg);
 
             try{
-                System.out.println("Sleeping");
                 player1.sleep(2000);
             } catch (InterruptedException e){
-
+                return;
             }
-
-            System.out.println("response received");
-            System.out.println("wokeup");
 
             synchronized (lock){
                 ready = true;
+                Log.i("Strategy1","lock released in strat1");
                 lock.notify();
             }
-
         }
     }
 
 
-    //Strategy to shoot in same group
+    //Strategy to shoot in same group till all 10 holes exhaust them change the group randomly and continue the strategy
     class Strategy2 implements Runnable{
 
         @Override
         public void run() {
 
+            ready2 = false;
+
             synchronized (lock){
                 while(!ready){
                     try{
+                        Log.i("Strategy2","Waiting for lock release in strat2");
                         lock.wait();
-                    } catch (InterruptedException e){}
+                    } catch (InterruptedException e){
+                        Log.i("Strategy2","Caught interrupted strategy2");
+                        synchronized (lock2){
+                            ready2 = true;
+                            lock2.notify();
+                        }
+                        return;
+                    }
                 }
             }
 
-            try{
-                player2.sleep(2000);
-            }catch (InterruptedException e){
+            ready = false;
 
+            Log.i("Strategy2","lock released continuing strat2");
+
+            try{
+                //System.out.println("Sleeping player 2");
+                player2.sleep(2000);
+            } catch (InterruptedException e){
+                Log.i("Strategy2","Player2 sleep interrupted");
+                return;
             }
 
             Message msg = uiHandler.obtainMessage(PLAYER2_ID);
 
+
+            //To change the group of player2 after all 10 possibilities have been exhausted
+            if(player2_previous_shots.size() ==10){
+
+                temp = 1+rand.nextInt(5);
+                while(player2_all_groups.contains(temp)){
+                    temp = 1+rand.nextInt(5);
+                }
+                player2Group = temp;
+                player2_all_groups.add(player2Group);
+                player2Shot = (player2Group-1)*10 + rand.nextInt(10);
+                player2_previous_shots.clear();
+                Log.i("Strategy2","new player2 group= "+player2Group);
+
+            }
+
+
+
+
+
             if(player2_previous_shots.size() < 10){
                 while(player2_previous_shots.contains(player2Shot)){
 
-                    System.out.println("matched item already in list");
                     switch (player2Group){
                         case 1: player2Shot = rand.nextInt(10);
                             break;
@@ -411,24 +464,46 @@ public class MainActivity extends AppCompatActivity {
                             break;
                     }
                 }
-            } else{
+            }
+
+            //****
+
+            /*else{
+
                 player2.quit();
                 System.out.println("player 2 thread quit inside runnable");
+                synchronized (lock2){
+                    ready2 = true;
+                    System.out.println("lock2 released after player2 quit in strat2");
+                    lock2.notify();
+                }
                 return;
-            }
+            }*/
+
+            //****
+
 
             player2_previous_shots.add(player2Shot);
 
-            System.out.println("player2Shot "+ player2Shot);
+            Log.i("Strategy2", "player2Shot "+ player2Shot);
+            //System.out.println("player2Shot "+ player2Shot);
 
             msg.arg1 = player2Shot;
             uiHandler.sendMessage(msg);
 
             try{
-                System.out.println("Sleeping");
+                Log.i("Strategy2", "Sleeping player2 thread");
+                //System.out.println("Sleeping player2");
                 player2.sleep(2000);
             } catch (InterruptedException e){
+                return;
+            }
 
+            synchronized (lock2){
+                ready2 = true;
+                Log.i("Strategy2", "lock2 released in strat2");
+               // System.out.println("lock2 released in strat2");
+                lock2.notify();
             }
         }
     }
@@ -455,6 +530,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (shot == winning) {
             Toast.makeText(getApplicationContext(), player+" Jackpot", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getApplicationContext(), player+" Won", Toast.LENGTH_SHORT).show();
             return JACKPOT;
         } else if(nearMiss(group(shot))) {
             Toast.makeText(getApplicationContext(), player+" Near Miss", Toast.LENGTH_SHORT).show();
@@ -472,45 +548,35 @@ public class MainActivity extends AppCompatActivity {
         else {
             return -1;
         }
-        //TODO for catastrophe
     }
 
     //To determine if the shot was a near miss
     private boolean nearMiss(int group){
-        if(group == groupWinning){
-            return true;
-        }else{
-            return false;
-        }
+        return (group == winningGroup);
     }
 
     //To determine if the shot was a near group
     private boolean nearGroup(int group){
-        if(Math.abs(group-groupWinning) == 1){
-            return true;
-        } else{
-            return false;
-        }
+        return(Math.abs(group- winningGroup) == 1);
     }
 
     //To check if shot was a big miss
     private boolean bigMiss(int group) {
-        //System.out.println(group-groupWinning);
-        if(Math.abs(group-groupWinning) != 1){
-            return true;
-        } else{
-            return false;
-        }
+        return (Math.abs(group- winningGroup) != 1) ;
     }
 
     //To check if it is a catastrophe
     private boolean catastrophe(){
-        if(player1Shot == player2Shot){
-            return true;
-        }
-        return false;
+        return(player1Shot == player2_lastshot || player2Shot == player1_lastshot);
+    }
+
+    //Method to modify view
+    private void modifyView(int position, String color){
+        View view = mainListView.getChildAt(position);
+        view.setBackgroundColor(Color.parseColor(color));
     }
 
 }
+
 
 
